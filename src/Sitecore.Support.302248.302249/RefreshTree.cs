@@ -10,6 +10,7 @@ using Sitecore.Shell.Applications.Dialogs.ProgressBoxes;
 using Sitecore.Shell.Framework.Commands;
 using Sitecore.Web.UI.Sheer;
 using System;
+using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Linq;
 using System.Threading;
@@ -60,26 +61,45 @@ namespace Sitecore.Support.ContentSearch.Client.Commands
       this.JobHandle = Context.Job.Handle;
 
       Item item = GetItemByUri(args.Parameters["itemUri"]);
-
       if (item == null)
       {
         return;
       }
 
-      this.Event.Subscribe("indexing:updateditem", this.ShowProgress);
+      List<Job> jobs = null;
 
-      Log.Audit($"Refresh indexes for item: {AuditFormatter.FormatItem(item)}", this);
-      var jobs = IndexCustodian.RefreshTree((SitecoreIndexableItem)item).ToList();
+      try
+      {
+        Event.Subscribe("indexing:updateditem", ShowProgress);
+        jobs = RunRefreshTree(item);
+        WaitTillDone(jobs);
+      }
+      finally
+      {
+        Event.Unsubscribe("indexing:updateitem", ShowProgress);
+        CheckAndMarkJobAsFailed(args, jobs);
+      }
+    }
 
+    private static void WaitTillDone(IEnumerable<Job> jobs)
+    {
       while (jobs.Any(j => !j.IsDone))
       {
         Thread.Sleep(500);
       }
+    }
 
-      this.Event.Unsubscribe("indexing:updateitem", this.ShowProgress);
+    private List<Job> RunRefreshTree(Item item)
+    {
+      Log.Audit($"Refresh indexes for item: {AuditFormatter.FormatItem(item)}", this);
 
-      Job failedJob = jobs.FirstOrDefault(j => j.Status.Failed);
-      if (failedJob != null)
+      var jobs = IndexCustodian.RefreshTree((SitecoreIndexableItem)item).ToList();
+      return jobs;
+    }
+
+    private void CheckAndMarkJobAsFailed(ClientPipelineArgs args, IEnumerable<Job> jobs)
+    {
+      if (jobs != null && jobs.Any(j => j.Status.Failed))
       {
         args.Parameters["failed"] = "1";
       }
