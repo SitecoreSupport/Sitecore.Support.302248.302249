@@ -101,7 +101,7 @@ namespace Sitecore.Support.ContentSearch.Client.Commands
         var job = JobManager.GetJob(this.JobHandle);
         if (job != null)
         {
-          job.Status.Messages.Add(itemPath);
+          job.Status.AddMessage(itemPath);
         }
       }
     }
